@@ -40,6 +40,22 @@
       "hardware_validated": false
     },
     {
+      "environment": "esp32-c3-vi",
+      "aliases": [],
+      "chip_family": "esp32c3",
+      "display_name": "ESP32-C3 DevKitM-1 (tieng Viet)",
+      "flash_size": "4MB",
+      "flash_bytes": 4194304,
+      "psram": "none",
+      "partition_table": "partitions/esp32c3_4mb.csv",
+      "bootloader_offset": "0x0",
+      "app_offset": "0x10000",
+      "asset_name": "nrsuite-esp32c3-vi.bin",
+      "release_status": "supported",
+      "release_available": true,
+      "hardware_validated": false
+    },
+    {
       "environment": "esp32-c5",
       "aliases": [],
       "chip_family": "esp32c5",
