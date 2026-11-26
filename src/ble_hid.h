@@ -1,0 +1,47 @@
+#pragma once
+#include <Arduino.h>
+
+#ifdef ENABLE_BLE_HID
+
+// ====================== BLE HID Module ======================
+// Ported from DuckESP. Scope intentionally reduced:
+//   - No BLE scanning
+//   - No device-name cloning
+//   - No onboard WebServer/UI — driven entirely by NRSuite's
+//     existing framed bridge protocol (CMD/RESP/EVENT) over USB CDC
+
+
+namespace BleHid {
+
+// Lifecycle
+void begin(const String& deviceName);
+bool isInitialized();
+void end();
+#ifdef NRSUITE_BLE_HEAP_DIAGNOSTIC
+void setPairingCompleteDiagnosticCallback(void (*cb)(bool success));
+#endif
+bool isConnected();
+bool isLinkConnected();
+bool isSessionActive();
+bool isBonded();
+String peerAddress();
+void clearBonds();
+bool disconnectPeer();
+int runScript(const String& payload);
+void stop();
+bool isAdvertising();
+void keyDown(const String& keyName);
+void keyUp(const String& keyName);
+void tapKey(const String& keyName);
+size_t typeText(const String& text);
+size_t typeTextSlow(const String& text, uint16_t charDelayMs);
+void mouseMove(int dx, int dy);
+void mouseScroll(int wheel);
+void mouseButton(const String& button, bool down);
+void mouseReleaseAll();
+void releaseAll();
+uint8_t resolveKey(String keyName);
+
+} // namespace BleHid
+
+#endif // ENABLE_BLE_HID
