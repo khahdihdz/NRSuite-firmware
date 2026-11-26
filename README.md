@@ -1,0 +1,661 @@
+# NRSuite Firmware
+
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](./LICENSE)
+[![Platform: ESP32](https://img.shields.io/badge/platform-ESP32%20%7C%20C3%20%7C%20C5%20%7C%20S2%20%7C%20S3-E7352C?logo=espressif&logoColor=white)](#supported-boards)
+[![Build: PlatformIO](https://img.shields.io/badge/build-PlatformIO-FF7F00?logo=platformio&logoColor=white)](https://platformio.org/)
+[![Documentation](https://img.shields.io/badge/docs-NRSuite--Docs-3DDC84?logo=readthedocs&logoColor=white)](https://7wp81x.github.io/NRSuite-Docs/)
+[![Status: Stable](https://img.shields.io/badge/status-1.0.0-brightgreen.svg)](../../releases)
+[![Discord](https://img.shields.io/badge/Discord-Join%20the%20server-5865F2?logo=discord&logoColor=white)](https://discord.gg/nnU9QSX5UZ)
+
+**ESP32 firmware for the NRSuite security research toolkit.**
+
+This firmware runs on the ESP32 and communicates with the [NRSuite Android app](https://github.com/7wp81x/nrsuite-android) over USB serial. It handles all radio-level operations: Wi-Fi scanning, monitor-mode packet capture, deauthentication, beacon injection, captive portal, BLE HID, BadUSB, and mass storage, with more modules planned.
+
+> **Authorized use only.** This firmware is for security research and testing on networks and devices you own or are explicitly authorized to test. See [LEGAL.md](./LEGAL.md).
+
+> Bản tiếng Việt: [README.vi.md](./README.vi.md) — build bản tiếng Việt:
+> `pio run -e esp32-c3-vi`. Hướng dẫn: [docs/HUONG-DAN-TIENG-VIET.md](./docs/HUONG-DAN-TIENG-VIET.md).
+
+**Current stable release line:** `1.0.0`. Mesh support remains experimental and is outside the v1 non-mesh release scope.
+
+Full user documentation, supported-board details, and flashing instructions:
+[NRSuite Documentation](https://7wp81x.github.io/NRSuite-Docs/)
+
+---
+
+## Quick Start
+
+```bash
+pip install platformio
+git clone https://github.com/7wp81x/nrsuite-firmware.git
+cd nrsuite-firmware
+pio run -e esp32-c3          # build for the recommended default board
+pio run -e esp32-c3 --target upload   # flash over USB
+```
+
+Prefer flashing from your phone? Use the built-in flasher in the [NRSuite Android app](https://github.com/7wp81x/nrsuite-android) instead, see [Flashing](#flashing).
+
+---
+
+## Table of Contents
+
+- [Quick Start](#quick-start)
+- [Community](#community)
+- [Supported Boards](#supported-boards)
+- [Features](#features)
+- [Requirements](#requirements)
+- [Building](#building)
+- [Flashing](#flashing)
+- [Running Tests](#running-tests)
+- [Project Structure](#project-structure)
+- [Wire Protocol](#wire-protocol)
+- [Feature Flags](#feature-flags)
+- [Contributing](#contributing)
+- [Related Repos](#related-repos)
+- [Versioning and Compatibility](#versioning-and-compatibility)
+- [Security](#security)
+- [License](#license)
+
+---
+
+## Community
+
+Join the NRSuite Discord server for setup help, build showcases, release news, and development discussion:
+
+[![Discord](https://img.shields.io/badge/Discord-Join%20the%20server-5865F2?logo=discord&logoColor=white)](https://discord.gg/nnU9QSX5UZ)
+
+Use `#support` for help, `#showcase` for builds, and `#github` for repo/code discussion.
+
+---
+
+## Supported Boards
+
+Full board compatibility details:
+[Supported Boards](https://7wp81x.github.io/NRSuite-Docs/firmware/supported-boards/)
+
+| Board | MCU | Native USB | BLE | BadUSB / MSC | Environment |
+|---|---|---|---|---|---|
+| ESP32-C3 DevKitM-1 | ESP32-C3 | ✅ (CDC) | ✅ | ❌ | `esp32-c3` |
+| ESP32-C5 DevKitC-1 (4 MB) | ESP32-C5 | ✅ (CDC) | ✅ | ❌ | `esp32-c5` |
+| ESP32-C5 N8R4 (experimental) | ESP32-C5 | ✅ (CDC) | ✅ | ❌ | `esp32-c5-n8r4` |
+| ESP32-C5 N16R4 (experimental) | ESP32-C5 | ✅ (CDC) | ✅ | ❌ | `esp32-c5-n16r4` |
+| ESP32-S3 universal safe fallback | ESP32-S3 | ✅ (TinyUSB) | ✅ | ✅ | `esp32-s3` |
+| ESP32-S3 N4R2 | ESP32-S3 | ✅ (TinyUSB) | ✅ | ✅ | `esp32-s3-n4r2` |
+| ESP32-S3 N4R8 | ESP32-S3 | ✅ (TinyUSB) | ✅ | ✅ | `esp32-s3-n4r8` |
+| ESP32-S3 N8R8 | ESP32-S3 | ✅ (TinyUSB) | ✅ | ✅ | `esp32-s3-n8r8` |
+| ESP32-S3 N16 | ESP32-S3 | ✅ (TinyUSB) | ✅ | ✅ | `esp32-s3-n16` |
+| ESP32-S3 N16R8 | ESP32-S3 | ✅ (TinyUSB) | ✅ | ✅ | `esp32-s3-n16r8` |
+| ESP32-S2 Saola-1 | ESP32-S2 | ✅ (TinyUSB) | ❌ | ✅ | `esp32-s2` |
+| ESP32 DevKit | ESP32 | ❌ (needs CP2102/CH340) | ✅ | ❌ | `esp32-devkit` |
+
+The `esp32-s3` image is the universal safe fallback for an S3 board whose exact
+flash/PSRAM variant is unknown. Select the matching N4R2/N4R8/N8R8/N16/N16R8
+environment when the board variant is known. ESP32-C5 N8R4/N16R4 are
+experimental profiles and require hardware validation before promotion.
+
+**Recommended board for getting started:** ESP32-C3 DevKitM-1. It has native USB CDC (no external USB-UART chip), BLE, and is the default build target.
+
+### Protocol transport
+
+Native-USB-capable targets (C3, C5, S2, S3, and C6 when enabled) listen for
+the NRSuite protocol on **both** the native USB CDC/JTAG port and UART0. This
+allows one firmware image to work with devkits that expose separate `USB` and
+`UART` connectors.
+
+Classic ESP32 targets remain UART-only because they have no native USB
+peripheral.
+
+`PING`, `STATUS`, and heartbeat events include a `transport` field, for example:
+
+```json
+{ "ok": true, "msg": "pong", "transport": "usb_cdc" }
+```
+
+or:
+
+```json
+{ "ok": true, "msg": "pong", "transport": "uart0" }
+```
+
+The Android app should connect to only one physical port at a time. Commands are
+answered on the transport that sent them, and asynchronous events follow the most
+recent active transport.
+
+`STATUS` also exposes device telemetry used by the Android Device specs screen:
+
+```text
+heap, heap_total, heap_used, heap_min_free, heap_max_alloc,
+psram_total, psram_free, chip_cores, cpu_mhz, temp_c, flash_size, sdk
+```
+
+`psram_total` and `psram_free` are zero when the target has no PSRAM.
+
+`temp_c` is the internal chip/die temperature in Celsius and is optional. It is
+reported when the official ESP-IDF temperature-sensor driver succeeds. Classic
+ESP32 uses the ROM-backed Arduino fallback and is best-effort. This value is not
+ambient temperature. `STATUS.features` advertises `temp_sensor`.
+
+### RAM diagnostics
+
+Firmware sends a compact `mem` event for non-noise module commands:
+
+```json
+{
+  "type": "mem",
+  "cmd": "SNIFF_START",
+  "start_ms": 123456,
+  "end_ms": 123789,
+  "duration_ms": 333,
+  "free_before": 90612,
+  "free_after": 90000,
+  "min_free": 85980,
+  "largest": 61428,
+  "transport": "uart0"
+}
+```
+
+The Android app prints module lifecycle lines and forwards these firmware events:
+
+```bash
+adb logcat -s NRSuiteMem:I NRSuiteFirmwareMem:I NRSuiteWire:I
+```
+
+`PING`, `STATUS`, and `HEAP` commands are intentionally excluded from the
+firmware memory event to keep output minimal. The event is sent through the
+normal protocol transport, so it does not corrupt UART-only firmware streams.
+
+### ESP32-C5 BLE HID heap diagnostic (test only)
+
+The normal BLE HID guard remains **90 KiB free / 48 KiB largest block**. The
+ESP32-C5 baseline has reported roughly 85.5 KiB free at boot, so it is rejected
+before NimBLE starts. Do not lower the release guard without measured hardware
+validation.
+
+A test-only C5 profile lowers the guard to **80 KiB / 40 KiB** and adds explicit
+heap snapshots around BLE startup, pairing, and stop:
+
+```bash
+pio run -e esp32-c5-ble-heap-diag
+```
+
+Output:
+
+```text
+release/nrsuite-esp32-c5-ble-heap-diag.bin
+```
+
+Flash it to the C5 and capture:
+
+```bash
+adb logcat -s NRSuiteFirmwareMem:I NRSuiteMem:I
+```
+
+Expected diagnostic stages:
+
+```text
+ble_start_before_guard
+ble_start_before_radio_idle
+ble_start_after_radio_idle
+ble_start_before_begin
+ble_start_after_begin
+ble_pairing_complete (or ble_pairing_failed)
+ble_stop_before_end
+ble_stop_after_end
+```
+
+Each snapshot includes `free_heap`, `heap_min_free`, `heap_max_alloc`, and
+`uptime_ms`. Use a fresh boot, start BLE HID, complete pairing, exercise a key
+report, and stop BLE. The profile is not a release artifact and must not be
+distributed.
+
+---
+
+## Features
+
+### Current
+
+| Module | Supported Boards | Description |
+|---|---|---|
+| Wi-Fi Scan | All (C5: 2.4/5 GHz) | AP scan with SSID, BSSID, channel, RSSI, and security type; C5 scans use dual-band AUTO mode plus explicit 2.4/5 GHz channel bitmaps, with passive timing for 5 GHz scans. |
+| Packet Sniffer | All | Monitor-mode pcap capture, fixed channel or AUTO 2.4/5 GHz channel hopping, optional EAPOL-only filter |
+| Nrugochi capture support | C3, C5, S3, classic ESP32 | Advertises `nrugochi`; `DEAUTH_CHANNEL_CAPTURE` deauths multiple APs on a channel then captures all EAPOL + beacons for Android per-BSSID splitting, with requested/sent/failed TX telemetry. Disabled on ESP32-S2 for release memory/profile reasons. |
+| Firmware Release Assets | All | Merged release images for ESP32 classic, C3, C5 universal/experimental N8R4/N16R4, S2, and S3 universal/N4R2/N4R8/N8R8/N16/N16R8; asset names come from `boards/targets.json`; C5 includes its `0x2000` bootloader in the normal `0x0` merged image |
+| Deauthentication | All | Raw 802.11 deauth frame injection; finite burst or unlimited duration-0 loop, elapsed/frames-per-second telemetry, capture-preserving `DEAUTH_BURST` retries, and firmware-native `DEAUTH_MULTI` with per-target channel scheduling and aggregate/per-target counters. Advertises `deauth_multi`. |
+| Deauth + Capture | All | Deauth followed by immediate EAPOL capture for WPA handshake collection |
+| WPS Pixie Dust | All | Raw WPS registrar M1-M8 flow, AP-lock preflight, hidden randomized WPA2 helper SoftAP, M3-only Pixie capture, same-session recovered-PIN continuation, and WSC completion. Advertises `wps_pixie` on all ESP32 targets. |
+| WPS Lock Detector | All | Passive beacon/probe-response scan that parses WPS IEs and reports AP Setup Locked state, WPS version, configuration methods, and selected-registrar metadata. Advertises `wps_lock_detect`. |
+| WPS Attempt Detector | All | Passive EAP-WSC monitor that tracks WPS Identity/M1–M8 sessions by BSSID and source client MAC, including channel, RSSI, stage, per-session evidence flags, frame count, and duration. It also emits live WPS lock-state changes for the target BSSID. Android uses M1–M3 material and M7–M8 transfer evidence for risk scoring. Advertises `wps_attempt_detect`. |
+| Deauth Detector | All | Passive deauth/disassoc frame detection with async events |
+| Client Detector | All | Passive probe/assoc/reassoc/auth client detection with async events; active mode reuses deauth |
+| Hidden AP Revealer | All | Hidden AP detection, probe-request candidates, association-based SSID resolution, and optional deauth reconnect trigger |
+| Beacon Spam | All | Inject fake beacon frames, random BSSID, hidden SSID support |
+| Captive Portal | C3, C5, S3, classic ESP32 | SoftAP evil twin with async HTTP server and custom HTML upload. HTML is limited to 24 KiB and must fit within the firmware heap safety margin; Android performs a start-time heap preflight. The AP advertises itself as the DHCP DNS/CP-URI target, answers wildcard DNS, force-serves the landing page for unmatched HTTP routes, and best-effort intercepts plaintext custom-resolver DNS queries. Disabled on ESP32-S2 until the FAT/portal storage path is validated. |
+| BLE HID | C3, C5, S3, DevKit | Bluetooth keyboard and mouse emulation, Ducky Script execution |
+| BLE Scanner | C3, C5, S3, DevKit | BLE advertisement scan with name, RSSI, manufacturer data, service UUIDs, and raw payload |
+| BLE GATT Profile | C3, C5, S3, DevKit | Read-only GATT service/characteristic enumeration after a BLE scan |
+| BadUSB | S2, S3 | USB HID keyboard injection via TinyUSB, Ducky Script from storage; NVS fallback when FAT is unavailable |
+| PIN Bruteforce | S2, S3 | Supervised native-HID range/wordlist tester; one-shot boot-arm like BadUSB; max-attempt safety cap, progress/ETA, configurable typing/start delays, session persistence; native HID only |
+| BLE HID PIN Bruteforce | C3, C5, S3, DevKit | Firmware-side legacy capability retained; the Android module card is removed from v1.0.0 and lock-screen use is unsupported |
+| IR TX/RX | All | RMT-based raw IR transmit/receive with dynamic GPIO configuration, NVS persistence, JSON timing transport, and IR RX events |
+| LD2450 mmWave Radar | All | UART 256000 target parser, sign-magnitude decode, dynamic RX/TX GPIO configuration, NVS persistence, `LD2450_START/STOP/STATUS/SET_CONFIG`, and target/presence/error events |
+| Mass Storage | S2, S3 | USB MSC mode, FAT filesystem, file read/write/delete over USB |
+| Heartbeat | All | Periodic uptime and free heap event to the app |
+| Persistent Device ID | All | First-boot NVS-generated `NRxxxxxxx` exposed in `STATUS.device_id` |
+
+> ESP32-C5 builds advertise `wifi_5ghz` and default shared Wi-Fi scans to
+> `WIFI_BAND_MODE_AUTO`. The 2.4 GHz and 5 GHz C5 paths are hardware-validated.
+> The regulatory country is configured from Android Settings and enforced by
+> the firmware channel mask. All current ESP32 target builds advertise
+> `wps_pixie`; raw-frame injection uses target-appropriate wrapper flags.
+
+### Captive-portal routing and custom DNS
+
+The portal SoftAP uses `192.168.4.1/24` with the DHCP lease pool starting at
+`192.168.4.2`. Firmware explicitly advertises `192.168.4.1` as the DHCP DNS
+server and enables DHCP option 114 (captive-portal URI) when supported by the
+Arduino/IDF core.
+
+HTTP behavior:
+
+- `/` and `/continue` serve the landing/custom page.
+- `/login` handles POST and GET form submissions.
+- Every other URI is served the landing/custom page directly. It is not
+  dependent on the client following a 3xx redirect.
+
+For clients that ignore DHCP DNS or have a manually configured resolver, the
+firmware starts a promiscuous best-effort DNS hook by default. The app can
+disable it per portal start with `dns_hijack:false`; DHCP DNS, wildcard DNS, and
+forced routes remain active. The DNS-only path does not allocate the PCAP/client
+queues; it uses a fixed stack buffer per intercepted query. Plaintext IPv4 UDP
+DNS queries sent to an external resolver are answered with `192.168.4.1`, and
+the app receives a rate-limited `portal_dns_hijack` event containing current
+`free_heap`, `heap_min_free`, and `heap_max_alloc`. This covers common manual-DNS
+configurations, but it cannot intercept:
+
+- DNS over HTTPS or DNS over TLS;
+- DNS over TCP;
+- IPv6 DNS queries;
+- clients using a hardcoded IP-based connectivity probe.
+
+Those clients may still require a manual portal URL or an OS-specific
+captive-portal bypass. The custom-DNS path needs real-device validation before
+being described as universal.
+
+### Portal HTML storage
+
+Portal HTML is file-backed. Android renders `#SSID#` into an app-cache temp file
+and uploads it in Base64 chunks; firmware writes `/portal/index.html` to the
+active portal filesystem and serves the completed file through the HTTP server.
+
+Storage mapping:
+
+- S2/S3: existing FAT `msc_ffat` partition, keeping USB MSC host-readable.
+- C3/C5/classic ESP32: dedicated LittleFS `portal` partition.
+
+`RESET_HTML` rejects pages over **24 KiB**. Portal start/upload failure stops the
+portal and reports the error to Android. Reflashing the non-MSC firmware images
+changes the partition table: the old 960 KiB SPIFFS area becomes a 704 KiB
+SPIFFS area plus a 256 KiB LittleFS `portal` area, so back up important
+wordlists/custom storage before flashing.
+
+### Multi-target deauth status
+
+Firmware-native multi-target deauth is implemented as `DEAUTH_MULTI`.
+Firmware owns the per-target channel schedule and reports aggregate plus
+per-target counters. `DEAUTH_STOP` stops either single- or multi-target loops,
+and `STOP_ALL` cleans up both. Android uses the native command when
+`STATUS.features` advertises `deauth_multi`; older firmware and selections over
+32 targets use the app-side repeated `DEAUTH_BURST` fallback.
+
+### Experimental Mesh (ESP-NOW)
+
+> Mesh is experimental and is not part of the non-mesh release acceptance matrix. Protocol and behavior may change.
+
+Implemented:
+
+- [x] Shared group-key provisioning over USB
+- [x] HKDF-SHA256 auth/transport key derivation
+- [x] NVS credential storage
+- [x] USB authentication challenge/response
+- [x] Dynamic master election and client self-demotion
+- [x] Client standby/auto-listen after reboot
+- [x] AES-CCM encrypted ESP-NOW transport and replay protection
+- [x] Heartbeat, timeout, session locking, and peer snapshots
+- [x] Peer chip metadata and RSSI/online state
+- [x] Configurable channel `1..13`, recovery hopping, and ACK/commit channel switching
+- [x] Generic distributed sensor reports and `node_health`
+- [x] Distributed same-channel Deauth Detector reporting (hardware-validated on S3 + S2)
+- [ ] Fixed/hop detector windows final hardware validation
+- [ ] Same-frame deauth correlation
+- [ ] Distributed Rogue AP evidence
+- [ ] RSSI locator / multilateration
+- [ ] Mesh chat, fragmentation, and multi-hop relay
+- [ ] ESP32-CAM remote node
+- [ ] LoRa relay
+
+### Planned (see [FEATURES.md](./FEATURES.md))
+- FastPair Model Identification: map FastPair model IDs to known device names/types (parked until test hardware is available)
+- Mesh chat and multi-hop messaging
+- Remote camera support (ESP32-CAM node)
+- Sub-GHz, nRF24, and RFID/NFC peripheral modules
+- LoRa long-range relay node
+
+---
+
+## Requirements
+
+### Hardware
+- One of the supported ESP32 boards listed above
+- USB cable (USB-C for most modern devkits)
+- For the classic ESP32 DevKit: a CP2102 or CH340 USB-UART bridge is built into most devkit boards
+
+### Software
+- [PlatformIO](https://platformio.org/) (CLI or VS Code extension)
+- Python 3.x (used by PlatformIO and the merge script)
+
+---
+
+## Building
+
+### Install PlatformIO
+
+```bash
+pip install platformio
+```
+
+Or install the [PlatformIO VS Code extension](https://platformio.org/install/ide?install=vscode).
+
+### Clone and build
+
+```bash
+git clone https://github.com/7wp81x/nrsuite-firmware.git
+cd nrsuite-firmware
+```
+
+Build the default target (ESP32-C3):
+
+```bash
+pio run
+```
+
+Build a specific board:
+
+```bash
+pio run -e esp32-c3
+pio run -e esp32-s3             # universal S3 safe fallback
+pio run -e esp32-s3-n4r2        # 4 MB flash + 2 MB PSRAM
+pio run -e esp32-s3-n4r8        # 4 MB flash + 8 MB PSRAM
+pio run -e esp32-s3-n8r8        # 8 MB flash + 8 MB PSRAM
+pio run -e esp32-s3-n16         # 16 MB flash, no PSRAM
+pio run -e esp32-s3-n16r8       # 16 MB flash + 8 MB PSRAM
+pio run -e esp32-c5
+pio run -e esp32-c5-n8r4        # experimental
+pio run -e esp32-c5-n16r4       # experimental
+pio run -e esp32-s2
+pio run -e esp32-devkit
+```
+
+The old `esp32-s3-psram` name remains available as a compatibility alias for
+`esp32-s3-n4r2`. Build all release targets with:
+
+```bash
+pio run -e esp32-c5 -e esp32-c5-n8r4 -e esp32-c5-n16r4 -e esp32-c3 \
+  -e esp32-s3 -e esp32-s3-n4r2 -e esp32-s3-n4r8 -e esp32-s3-n8r8 \
+  -e esp32-s3-n16 -e esp32-s3-n16r8 -e esp32-s2 -e esp32-devkit
+```
+
+Firmware library dependencies are pinned to exact tested versions in
+`platformio.ini` for reproducible release builds. Per-board environments,
+partition tables, and release asset names are defined in `boards/`; see
+[`boards/README.md`](boards/README.md).
+
+### PSRAM use
+
+The S3 PSRAM profiles cover N4R2, N4R8, N8R8, and N16R8 boards. PSRAM is
+detected at runtime and reported through `STATUS.psram_total` /
+`STATUS.psram_free`; `STATUS.features` includes `psram` when present. The
+no-PSRAM `esp32-s3` and `esp32-s3-n16` profiles remain separate. Boards with the
+same flash/PSRAM class share an image; do not infer a variant from flash size
+alone in the app unless the image name identifies it.
+
+PSRAM is currently used opportunistically for large non-DMA buffers. The
+packet-sniffer frame and client-event queues are allocated with
+`heap_caps_malloc(..., MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)` when PSRAM is
+available, with an internal-RAM fallback on boards without PSRAM. This keeps
+roughly 11 KiB of per-sniff-session queue storage out of internal SRAM on PSRAM
+boards.
+
+PSRAM cannot replace internal SRAM for all uses. WiFi/BLE DMA buffers, interrupt
+handlers, critical stacks, and many lwIP/AsyncTCP allocations must remain in
+internal RAM. Future candidates for PSRAM include large scan/WPS caches and
+non-DMA protocol buffers, but each must be measured for performance and cache
+safety.
+
+### Release logging
+
+Release builds compile out raw serial debug output by default:
+
+- NRSuite modules use `NRSUITE_DEBUG_*` from `src/NrDebugLog.h`, controlled by
+  `NRSUITE_DEBUG_SERIAL` (default `0`).
+- The Hijel BLE HID library logs only when compiled with
+  `HIJEL_HID_ENABLE_LOGGING=1` (default `0`).
+- ESP-IDF core logging is kept low with `CORE_DEBUG_LEVEL=0`.
+
+Raw `Serial` output must stay disabled on UART-only targets because `Serial` is
+also the NRSuite protocol transport. To enable module debug logs for a local
+diagnostic build:
+
+```bash
+PLATFORMIO_BUILD_FLAGS="-DNRSUITE_DEBUG_SERIAL=1 -DHIJEL_HID_ENABLE_LOGGING=1" \
+  pio run -e esp32-devkit
+```
+
+These switches primarily reduce flash/string and stack usage; they do not
+reclaim large amounts of heap. The firmware's static RAM usage is reported by
+the linker from `.dram0.data + .dram0.bss`, while runtime free heap comes from
+`heap_caps_get_free_size(MALLOC_CAP_INTERNAL)`.
+
+### LD2450 standalone serial bring-up
+
+Normal builds leave the LD2450 stopped until Android sends `LD2450_START`.
+For standalone serial-monitor bring-up, build the debug profile:
+
+```bash
+pio run -e esp32-devkit-ld2450-debug -t upload
+pio device monitor -b 115200
+```
+
+That profile enables `LD2450_BOOT_START=1` and `LD2450_BOOT_DEBUG=1`.
+
+---
+
+## Flashing
+
+See the central [Firmware Flashing guide](https://7wp81x.github.io/NRSuite-Docs/firmware/flashing/)
+for additional target-selection and USB-UART bridge notes.
+
+
+### Flash all connected boards through a hub
+
+The helper script probes every detected serial port with `esptool chip-id`,
+chooses the matching PlatformIO environment, uploads the current build, and
+skips ports that do not respond as an ESP32:
+
+```bash
+./tools/flash_all_boards.sh
+```
+
+You can also provide explicit ports:
+
+```bash
+./tools/flash_all_boards.sh /dev/ttyUSB0 /dev/ttyACM0
+```
+
+Requirements: `jq`, a working `.pio/penv`, and one serial port per physical board.
+If a board exposes both UART and native USB simultaneously, either pass one port
+explicitly or expect the same firmware to be uploaded once through each port.
+
+### Option A: Flash from the NRSuite Android app (recommended)
+
+The Android app has a built-in ESP32 flasher. Connect your board via USB-OTG and use the flasher screen to upload the latest firmware binary from the [Releases](../../releases) page.
+
+> NRSuite uses **full-image USB reflashing only**. OTA updates are not planned for 4 MB builds.
+
+### Option B: Flash via PlatformIO
+
+```bash
+pio run -e esp32-c3 --target upload
+```
+
+Replace `esp32-c3` with your target environment.
+
+### Option C: Flash via esptool manually
+
+Download the merged binary from [Releases](../../releases) and flash it:
+
+```bash
+esptool.py --port /dev/ttyUSB0 --baud 921600 write_flash 0x0 nrsuite-esp32c3.bin
+```
+
+> The release binary is a merged flash image (bootloader + partition table + app) produced by `merge_script.py` at build time. Use offset `0x0` when flashing the merged binary.
+
+---
+
+## Running Tests
+
+Unit tests run natively on your machine without any hardware:
+
+```bash
+pio test -e native
+```
+
+This runs the protocol spec tests under `test/test_protocol_spec/`.
+
+---
+
+## Project Structure
+
+```
+src/
+  main.cpp             # Entry point, command handler, setup/loop
+  sniffer.cpp/h        # Monitor-mode capture, client detection, pcap streaming
+  beacon.cpp/h         # Beacon frame injection
+  portal.cpp/h         # Captive portal (SoftAP + async HTTP server)
+  deauth_detector.cpp/h # Passive deauth/disassoc detector
+  hidden_ap.cpp/h      # Hidden AP detection and SSID resolution
+  wps_*.cpp/h          # Raw WPS/WSC parsing, registrar state machine, and Pixie Dust flow
+  ble_hid.cpp/h        # BLE keyboard/mouse HID (C3, S3, DevKit)
+  ble_scanner.cpp/h    # BLE advertisement scanner (C3, S3, DevKit)
+  ble_profile.cpp/h    # Read-only BLE GATT profiler (C3, S3, DevKit)
+  UsbHID.cpp/h         # USB HID BadUSB via TinyUSB (S2, S3)
+  pin_bruteforce.cpp/h # Supervised native-HID PIN range/wordlist tester
+  ble_pin_bruteforce.cpp/h # Live BLE HID PIN range/wordlist tester
+  ld2450.cpp/h         # HLK-LD2450 mmWave radar UART parser and event counters
+  ir_remote.cpp/h      # ESP32 RMT IR TX/RX and dynamic GPIO configuration
+  mesh.cpp/h           # Experimental encrypted ESP-NOW mesh transport
+  pn532_nfc.cpp/h      # Hidden/disabled PN532 NFC prototype
+  mass_storage.cpp/h   # USB MSC + FAT filesystem (S2, S3)
+  FileUpload.cpp/h     # Chunked file upload to mass storage
+  override_sanity.cpp  # ieee80211 raw frame sanity check override (required for frame injection)
+
+lib/
+  BridgeProtocol/   # USB serial framing protocol (shared with nrsuite-android)
+    BridgeProtocol.cpp/h
+    ProtocolSpec.h
+  HijelHID_BLEKeyboard/  # BLE HID keyboard library
+
+test/
+  test_protocol_spec/  # Native unit tests for the bridge protocol
+
+boards/
+  targets.json           # Target registry: env, flash/PSRAM, offsets, asset names
+  *.ini                  # Per-board PlatformIO environments
+  common/                # Shared per-family configuration
+partitions/
+  *.csv                  # NVS/app/FAT or LittleFS partition layouts
+scripts/
+  target_registry.py     # Registry + partition-table resolution helpers
+  validate_targets.py    # CI/local registry and layout validation
+  verify_merged_images.py # CI/local merged-image offset validation
+merge_script.py          # Post-build merge using registry-resolved app offsets
+platformio.ini           # Shared PlatformIO config and extra_configs only
+```
+
+---
+
+## Wire Protocol
+
+The firmware communicates with the Android app using the NRSuite bridge protocol implemented in `lib/BridgeProtocol/`. The protocol spec is versioned separately in [nrsuite-protocol](https://github.com/7wp81x/nrsuite-protocol).
+
+**Current protocol version: `1.0`**
+
+If your contribution changes any command, response field, or frame type, update the protocol spec first and reference the spec version in your PR.
+
+---
+
+## Feature Flags
+
+Features are conditionally compiled based on the target board. Key flags set in `platformio.ini`:
+
+| Flag | Boards | Description |
+|---|---|---|
+| `ENABLE_BLE_HID` | C3, S3, DevKit | Enables BLE keyboard and mouse HID |
+| `MSC_SUPPORTED` | S2, S3 | Enables USB mass storage |
+| `HID_SUPPORTED` | S2, S3 | Enables USB HID BadUSB |
+| `ARDUINO_USB_CDC_ON_BOOT` | C3, S2, S3, C5 | Native USB CDC/JTAG support; native-capable builds also listen on UART0 |
+| `CONFIG_ESP_WIFI_ENABLE_SNIFFER` | All | Enables promiscuous mode for packet capture |
+| `WPS_PIXIE_SUPPORTED` | All | Enables the raw WPS Pixie Dust registrar flow and `wps_pixie` capability |
+
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full guide: branching model, PR process, testing expectations, and scope boundaries.
+
+Short version:
+- Open an issue before starting any nontrivial feature
+- Branch from `develop`, not `main`
+- Test on real hardware before submitting (CI only does a compile check)
+- Run `pio test -e native` before submitting protocol-related changes
+- Jamming features (RF/Wi-Fi/BLE denial-of-service transmission) will not be merged, see CONTRIBUTING.md
+
+---
+
+## Related Repos
+
+| Repo | Contents |
+|---|---|
+| [nrsuite-android](https://github.com/7wp81x/nrsuite-android) | Android companion app (Kotlin/Jetpack Compose) |
+| [nrsuite-protocol](https://github.com/7wp81x/nrsuite-protocol) | Wire protocol specification |
+
+---
+
+## Versioning and Compatibility
+
+| Firmware version | App version | Protocol spec |
+|---|---|---|
+| v1.0.0 | v1.0.0 | v1.0 / proto_minor 2 (non-mesh); mesh protocol 1.1 is experimental |
+| v1.0.0-rc.2 | v1.0.0-rc.3 | v1.0 / proto_minor 2 (non-mesh); mesh protocol 1.1 is experimental |
+| v1.0.0-rc.1 | v1.0.0-rc.2 | v1.0 / proto_minor 2 (non-mesh); mesh protocol 1.1 is experimental |
+| v1.0.0-beta.3.2.0 | v1.0.0-beta.3.2.0 | v1.0 / proto_minor 2 (non-mesh); mesh protocol 1.1 is experimental |
+
+---
+
+## Security
+
+If you find a vulnerability in the firmware itself (for example, a flaw in the bridge protocol auth, the portal HTML injection handling, or the deauth frame construction), please report it privately. See [SECURITY.md](./SECURITY.md).
+
+---
+
+## License
+
+[GNU General Public License v3.0 or later](./LICENSE)
+
+NRSuite firmware is free software: you can redistribute it and/or modify it
+under the terms of the GNU General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option) any
+later version.
+
+This license covers redistribution of the code. It does not authorize use of
+the firmware against systems you do not own or lack permission to test. See
+[LEGAL.md](./LEGAL.md) and [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
